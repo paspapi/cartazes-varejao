@@ -975,7 +975,11 @@ def select_products(
         except ValueError as exc:
             raise SelectionError(f"{spec!r}: {exc}") from exc
         key = match_key(name)
-        matches = [row for row in products if key in row_keys(row)]
+        # Nome exato ou parte do nome (ex.: "バナナ" tambem acha "銀バナナ"; "ねぎ" acha 長ねぎ e 小ねぎ).
+        matches = [
+            row for row in products
+            if any(key == row_key or key in row_key for row_key in row_keys(row))
+        ]
         if not matches:
             raise SelectionError(f"{name!r}: produto nao encontrado no CSV")
 

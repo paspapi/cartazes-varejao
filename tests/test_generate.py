@@ -26,8 +26,17 @@ def test_price_override(products):
 def test_ambiguous_name_lists_candidates(products):
     with pytest.raises(generate.SelectionError, match="BANANA NANICA"):
         generate.select_products(products, ["バナナ"])
+    with pytest.raises(generate.SelectionError, match="BANANA PRATA"):
+        generate.select_products(products, ["バナナ"])
+    with pytest.raises(generate.SelectionError, match="HANA"):
+        generate.select_products(products, ["ブロッコリー"])
+    with pytest.raises(generate.SelectionError, match="CEBOLINHA"):
+        generate.select_products(products, ["ねぎ"])
     with pytest.raises(generate.SelectionError, match="NINJA"):
         generate.select_products(products, ["BROCOLIS"])
+    # Parte do nome com um so produto: escolhe direto
+    (row,) = generate.select_products(products, ["PORO"])
+    assert row["produto"] == "ALHO PORÓ"
     assert len(generate.select_products(products, ["BROCOLIS NINJA"])) == 1
 
 

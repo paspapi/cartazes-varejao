@@ -107,7 +107,7 @@ Uso previsto: pedir pelo Telegram (Hermes no server-minicam), que roda `--item` 
 
 ### Opcoes
 
-- `--item PRODUTO[=PRECO]` (repetivel): gera so estes produtos. Aceita o nome em portugues (sem diferenciar acentos e maiusculas), `produto variedade` (ex.: `BROCOLIS NINJA`) ou o `商品名` (ex.: `アボカド`). `PRECO` substitui o preco do CSV (`12`, `12.5` ou `12,50`)
+- `--item PRODUTO[=PRECO]` (repetivel): gera so estes produtos. Aceita o nome em portugues (sem diferenciar acentos e maiusculas), `produto variedade` (ex.: `BROCOLIS NINJA`) ou o `商品名` (ex.: `アボカド`). Parte do nome tambem vale: `バナナ` acha 銀バナナ e as outras bananas; se achar mais de um produto, lista os candidatos. `PRECO` substitui o preco do CSV (`12`, `12.5` ou `12,50`)
   - Se o nome casar com mais de um produto (ex.: `バナナ`) ou se o produto tiver mais de um preco no CSV sem preco informado (ex.: `ALFACE`), sai com codigo 2 e lista os candidatos
 - `--save`: grava no CSV os precos de `--item`. Se o produto tiver mais de uma linha no CSV (ex.: `ALFACE` 5 e 6) e o preco novo nao for nenhum deles, recusa (codigo 2): edite o CSV a mao
 - `--add JSON` (repetivel): acrescenta um produto novo ao CSV e gera o cartaz. Ex.: `--add '{"produto": "ABACAXI", "produto_jp": "パイナップル", "preco": "12"}'`. Campos aceitos: os do cabecalho do CSV (`produto_jp` = `商品名`). Os omitidos (tipo, origem, cores, fontes) copiam o valor mais comum do CSV. Recusa produto que ja existe
