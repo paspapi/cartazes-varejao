@@ -9,7 +9,6 @@ Este projeto gera cartazes A4 em PDF a partir do template CEAGESP usando `script
 - `data/produtos.csv`: entrada
 - `output/`: PDFs gerados
 - `run_generate.sh`: executa usando `.venv` (repassa os argumentos)
-- `gerar_cartazes.bat`: launcher para Windows (Python nativo, cria `.venv` na primeira vez)
 - `tests/test_generate.py`: pytest (selecao de produtos e geracao)
 - `README.md`: instrucoes de uso e opcoes (`--item`, `--list`, `--date`)
 
@@ -17,11 +16,10 @@ Este projeto gera cartazes A4 em PDF a partir do template CEAGESP usando `script
 
 - O projeto espera `.venv/` na raiz.
 - Dependencia principal: `PyMuPDF` (importado como `pymupdf as fitz`), versao fixada em `requirements.txt`
-- Fontes DejaVu ficam em `assets/fonts/` (nao depende de fontes do sistema), para rodar tambem no Windows
+- Fontes DejaVu ficam em `assets/fonts/` (nao depende de fontes do sistema)
 - Execucao recomendada:
   - `bash run_generate.sh`
   - ou `source .venv/bin/activate && python scripts/generate.py`
-  - ou execute `gerar_cartazes.bat` no Windows
 
 ## Assets usados no layout
 
@@ -115,7 +113,6 @@ Escalas atuais relevantes:
 
 - Nao mexer no template CEAGESP.
 - Fazer apenas sobreposicao.
-- O launcher de Windows e `gerar_cartazes.bat` (caminho relativo, pode mover a pasta).
 - Para conferir mudancas de layout, gerar o mesmo produto antes e depois e comparar os pixels (os PDFs antigos de 2026-04-24 ficam no hd-backup do server-taichi).
 - Se for ajustar layout, mudar poucos valores por vez e comparar PDF.
 - Se os PNGs nao forem usados, verificar:

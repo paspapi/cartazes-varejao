@@ -29,7 +29,6 @@ cartazes-varejao/
 ├── tests/
 ├── .venv/
 ├── requirements.txt
-├── gerar_cartazes.bat
 └── run_generate.sh
 ```
 
@@ -99,14 +98,12 @@ Rúcula,,Orgânico,Produção própria,7.00,preto,,verde,preto,preto
 
 ## Como executar
 
-Linux:
-
 ```bash
 bash run_generate.sh                       # todos os produtos do CSV
 bash run_generate.sh --item AVOCADO=12     # so alguns produtos
 ```
 
-Windows (Python nativo, sem WSL): dar dois cliques em `gerar_cartazes.bat`. Na primeira vez ele cria `.venv` e instala o PyMuPDF. Precisa do Python 3 (`winget install Python.Python.3.12`).
+Uso previsto: pedir pelo Telegram (Hermes no server-minicam), que roda `--item` e devolve o PDF consolidado.
 
 ### Opcoes
 
