@@ -60,8 +60,11 @@ def test_generate_selected(tmp_path):
 
 def test_generate_all_has_one_page_per_row(tmp_path, products):
     assert generate.main(["--output-dir", str(tmp_path), "--date", "20261013"]) == 0
-    with fitz.open(tmp_path / "__PRODUTOS_TODOS_TODOS_20261013.pdf") as doc:
+    combined = tmp_path / "__PRODUTOS_TODOS_TODOS_20261013.pdf"
+    with fitz.open(combined) as doc:
         assert doc.page_count == len(products)
+    # Telegram aceita documentos de ate 50 MB
+    assert combined.stat().st_size < 20 * 1024 * 1024
 
 
 @pytest.fixture

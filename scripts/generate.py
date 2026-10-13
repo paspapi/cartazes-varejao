@@ -1113,7 +1113,8 @@ def build_combined_pdf(input_paths: list[Path], output_path: Path) -> None:
                 combined_doc.insert_pdf(source_doc)
             finally:
                 source_doc.close()
-        combined_doc.save(output_path, deflate=True)
+        # garbage=4 junta fontes e template repetidos em cada pagina (316 MB -> poucos MB).
+        combined_doc.save(output_path, garbage=4, deflate=True)
     finally:
         combined_doc.close()
 
@@ -1164,7 +1165,9 @@ def build_poster(row: dict[str, object], output_path: Path) -> None:
             LAYOUT,
         )
 
-        output_doc.save(output_path, deflate=True)
+        # Mantem so os glifos usados (cerca de 7,5 MB -> 2,4 MB por cartaz; Telegram aceita ate 50 MB).
+        output_doc.subset_fonts()
+        output_doc.save(output_path, garbage=4, deflate=True)
     finally:
         output_doc.close()
         template_doc.close()
