@@ -26,8 +26,10 @@ cartazes-varejao/
 │   └── generate.py
 ├── template/
 │   └── ceagesp_template.pdf
+├── tests/
 ├── .venv/
-├── run_generate_windows.bat
+├── requirements.txt
+├── gerar_cartazes.bat
 └── run_generate.sh
 ```
 
@@ -35,7 +37,7 @@ cartazes-varejao/
 
 - Python 3.10+
 - Ambiente virtual `.venv`
-- PyMuPDF instalado dentro do `.venv`
+- PyMuPDF (versao em `requirements.txt`) instalado dentro do `.venv`
 
 ## Ambiente `.venv`
 
@@ -45,7 +47,7 @@ Se o ambiente virtual ainda nao existir:
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install pymupdf
+python -m pip install -r requirements.txt
 ```
 
 Se o `.venv` ja existir:
@@ -64,6 +66,7 @@ Os arquivos abaixo precisam existir:
 - `assets/tipo-organico.png`
 - `assets/origem-producao propria.png`
 - `assets/fonts/PermanentMarker-Regular.ttf`
+- `assets/fonts/DejaVuSans.ttf` e `DejaVuSans-Bold.ttf` (incluidas no projeto; licenca em `DejaVu-LICENSE.txt`)
 
 Opcional:
 
@@ -96,29 +99,31 @@ Rúcula,,Orgânico,Produção própria,7.00,preto,,verde,preto,preto
 
 ## Como executar
 
-Opcao 1:
+Linux:
 
 ```bash
-source .venv/bin/activate
-python scripts/generate.py
+bash run_generate.sh                       # todos os produtos do CSV
+bash run_generate.sh --item AVOCADO=12     # so alguns produtos
 ```
 
-Opcao 2:
+Windows (Python nativo, sem WSL): dar dois cliques em `gerar_cartazes.bat`. Na primeira vez ele cria `.venv` e instala o PyMuPDF. Precisa do Python 3 (`winget install Python.Python.3.12`).
+
+### Opcoes
+
+- `--item PRODUTO[=PRECO]` (repetivel): gera so estes produtos. Aceita o nome em portugues (sem diferenciar acentos e maiusculas), `produto variedade` (ex.: `BROCOLIS NINJA`) ou o `商品名` (ex.: `アボカド`). `PRECO` substitui o preco do CSV (`12`, `12.5` ou `12,50`)
+  - Se o nome casar com mais de um produto (ex.: `バナナ`) ou se o produto tiver mais de um preco no CSV sem preco informado (ex.: `ALFACE`), sai com codigo 2 e lista os candidatos
+- `--list`: lista os produtos do CSV em JSON
+- `--date AAAAMMDD`: data no nome dos arquivos (padrao: hoje)
+- `--output-dir`, `--csv`: outra pasta de saida / outro CSV
+
+O CSV nao e alterado: o preco de `--item` vale so para aquela geracao.
+
+## Testes
 
 ```bash
-bash run_generate.sh
+python -m pip install -r requirements.txt pytest
+python -m pytest -q
 ```
-
-Opcao 3:
-
-No Windows, execute `run_generate_windows.bat`.
-
-Observacoes importantes:
-
-- Se voce estiver no Windows com WSL, o launcher correto e o `.bat`.
-- O `.bat` chama o WSL, entra no projeto, ativa `.venv` e roda `scripts/generate.py`.
-- Voce pode copiar `run_generate_windows.bat` para a Area de Trabalho do Windows.
-- Se mover o projeto de pasta no WSL, atualize o caminho dentro do `.bat`.
 
 ## Saida
 
@@ -127,7 +132,7 @@ Os arquivos sao gravados em `output/`.
 Padrao dos PDFs individuais:
 
 ```text
-<produto>_<tipo>_<preco>_<data>.pdf
+<produto>[_<variedade>]_<tipo>_<preco>_<data>.pdf
 ```
 
 Exemplo:
@@ -139,7 +144,7 @@ alface_org_6-00_20260424.pdf
 Padrao do PDF consolidado:
 
 ```text
-produtos_todos_todos_20260424.pdf
+__PRODUTOS_TODOS_TODOS_<data>.pdf
 ```
 
 ## Observacoes
@@ -150,4 +155,3 @@ produtos_todos_todos_20260424.pdf
   - `Aversa Vectors.otf` no preco, quando disponivel
   - PNGs para `tipo-organico` e `origem-producao propria`
 - O consolidado junta todos os PDFs individuais gerados na mesma execucao.
-- Para Windows com WSL, prefira `run_generate_windows.bat`.

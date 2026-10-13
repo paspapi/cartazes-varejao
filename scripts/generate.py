@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+import argparse
 import csv
 import hashlib
+import json
 import math
 import random
 import re
 import sys
 import unicodedata
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 try:
-    import fitz  # PyMuPDF
+    import pymupdf as fitz
 except ImportError as exc:  # pragma: no cover - import guard for runtime
     raise SystemExit(
         "PyMuPDF nao esta instalado. Instale a dependencia e rode novamente.\n"
@@ -32,8 +35,8 @@ FONTS_DIR = ROOT_DIR / "assets" / "fonts"
 PERMANENT_MARKER_PATH = ROOT_DIR / "assets" / "fonts" / "PermanentMarker-Regular.ttf"
 AVERSA_PATH = ROOT_DIR / "assets" / "fonts" / "Aversa Vectors.otf"
 TANUKI_MAGIC_PATH = ROOT_DIR / "assets" / "fonts" / "TanukiMagic.ttf"
-DEJAVU_BOLD_PATH = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
-DEJAVU_REGULAR_PATH = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+DEJAVU_BOLD_PATH = FONTS_DIR / "DejaVuSans-Bold.ttf"
+DEJAVU_REGULAR_PATH = FONTS_DIR / "DejaVuSans.ttf"
 
 REGULAR_FONT = "dejavu_regular"
 BOLD_FONT = "dejavu_bold"
@@ -132,17 +135,13 @@ def require_assets() -> None:
         CSV_PATH,
         HARE_LOGO_PATH,
         SISORG_LOGO_PATH,
+        DEJAVU_BOLD_PATH,
+        DEJAVU_REGULAR_PATH,
     ]
     missing = [str(path) for path in required_paths if not path.exists()]
     if missing:
         missing_list = "\n".join(f"- {item}" for item in missing)
         raise SystemExit(f"Arquivos obrigatorios ausentes:\n{missing_list}")
-
-    optional_font_paths = [DEJAVU_BOLD_PATH, DEJAVU_REGULAR_PATH]
-    missing_optional = [str(path) for path in optional_font_paths if not path.exists()]
-    if missing_optional:
-        missing_list = "\n".join(f"- {item}" for item in missing_optional)
-        raise SystemExit(f"Fontes de sistema obrigatorias ausentes:\n{missing_list}")
 
 
 def parse_color(raw_value: str | None, default: tuple[float, float, float]) -> tuple[float, float, float]:
@@ -913,18 +912,100 @@ def should_show_organic_logos(tipo: str) -> bool:
     return "ORGANICO" in normalized
 
 
-def build_output_filename(row: dict[str, object]) -> str:
+def build_output_filename(row: dict[str, object], data: str) -> str:
     produto = slugify_filename_part(str(row["produto"]))
+    if str(row["variedade"]).strip():
+        produto = f"{produto}_{slugify_filename_part(str(row['variedade']))}"
     tipo_raw = str(row["tipo"]).strip()
     tipo = "org" if "ORGANICO" in normalize_label(tipo_raw) else slugify_filename_part(tipo_raw)
     preco = format_price(str(row["preco"])).replace(",", "-")
-    data = "20260424"
     return f"{produto}_{tipo}_{preco}_{data}.pdf"
 
 
-def build_combined_output_filename() -> str:
-    data = "20260424"
+def build_combined_output_filename(data: str) -> str:
     return f"__PRODUTOS_TODOS_TODOS_{data}.pdf"
+
+
+class SelectionError(Exception):
+    pass
+
+
+def match_key(value: str) -> str:
+    # "｜" e usado no CSV como traco de prolongamento na escrita vertical.
+    value = unicodedata.normalize("NFKC", value).replace("｜", "ー").replace("|", "ー")
+    value = unicodedata.normalize("NFKD", value)
+    value = "".join(char for char in value if not unicodedata.combining(char))
+    value = unicodedata.normalize("NFC", value)
+    return re.sub(r"\s+", " ", value).strip().upper()
+
+
+def row_keys(row: dict[str, object]) -> set[str]:
+    produto = str(row["produto"])
+    variedade = str(row["variedade"])
+    keys = {match_key(produto), match_key(f"{produto} {variedade}")}
+    if str(row["produto_jp"]).strip():
+        keys.add(match_key(str(row["produto_jp"])))
+        keys.add(match_key(str(row["produto_jp"]).replace("・", "")))
+    return keys
+
+
+def describe_row(row: dict[str, object]) -> str:
+    name = f"{row['produto']} {row['variedade']}".strip()
+    return f"{name} / {row['produto_jp']} / {format_price(str(row['preco']))}"
+
+
+def parse_item_spec(spec: str) -> tuple[str, str | None]:
+    name, sep, price = spec.rpartition("=")
+    if not sep:
+        return spec.strip(), None
+    price = price.strip().replace(",", ".")
+    format_price(price)
+    return name.strip(), price
+
+
+def select_products(
+    products: list[dict[str, object]],
+    item_specs: list[str],
+) -> list[dict[str, object]]:
+    selected = []
+    for spec in item_specs:
+        try:
+            name, price = parse_item_spec(spec)
+        except ValueError as exc:
+            raise SelectionError(f"{spec!r}: {exc}") from exc
+        key = match_key(name)
+        matches = [row for row in products if key in row_keys(row)]
+        if not matches:
+            raise SelectionError(f"{name!r}: produto nao encontrado no CSV")
+
+        # Linhas repetidas do mesmo produto (ex.: ALFACE 5 e 6) usam o mesmo layout.
+        groups = {match_key(f"{row['produto']} {row['variedade']}") for row in matches}
+        if len(groups) > 1:
+            options = "\n".join(f"- {describe_row(row)}" for row in matches)
+            raise SelectionError(f"{name!r} e ambiguo. Candidatos:\n{options}")
+        if price is None:
+            prices = {format_price(str(row["preco"])) for row in matches}
+            if len(prices) > 1:
+                options = "\n".join(f"- {describe_row(row)}" for row in matches)
+                raise SelectionError(f"{name!r} tem mais de um preco no CSV. Informe o preco:\n{options}")
+
+        row = dict(matches[0])
+        if price is not None:
+            row["preco"] = price
+        selected.append(row)
+    return selected
+
+
+def catalog(products: list[dict[str, object]]) -> list[dict[str, str]]:
+    return [
+        {
+            "produto": str(row["produto"]).strip(),
+            "variedade": str(row["variedade"]),
+            "produto_jp": str(row["produto_jp"]),
+            "preco": format_price(str(row["preco"])),
+        }
+        for row in products
+    ]
 
 
 def build_combined_pdf(input_paths: list[Path], output_path: Path) -> None:
@@ -993,28 +1074,64 @@ def build_poster(row: dict[str, object], output_path: Path) -> None:
         template_doc.close()
 
 
-def main() -> int:
-    require_assets()
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+def parse_args(argv: list[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Gera cartazes A4 em PDF a partir de data/produtos.csv.",
+    )
+    parser.add_argument(
+        "--item",
+        action="append",
+        default=[],
+        metavar="PRODUTO[=PRECO]",
+        help=(
+            "Gera so este produto (repetivel). Aceita o nome em portugues, "
+            "'produto variedade' ou o nome em japones (商品名). "
+            "PRECO substitui o preco do CSV, ex.: --item AVOCADO=12 --item 'ALFACE=6,50'"
+        ),
+    )
+    parser.add_argument("--list", action="store_true", help="Lista os produtos do CSV em JSON e sai.")
+    parser.add_argument("--date", default=date.today().strftime("%Y%m%d"), help="Data no nome dos arquivos (AAAAMMDD). Padrao: hoje.")
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR, help="Pasta de saida. Padrao: output/")
+    parser.add_argument("--csv", type=Path, default=CSV_PATH, help="CSV de entrada. Padrao: data/produtos.csv")
+    args = parser.parse_args(argv)
+    if not re.fullmatch(r"\d{8}", args.date):
+        parser.error("--date precisa ser AAAAMMDD")
+    return args
 
-    products = read_products(CSV_PATH)
-    generated_files = []
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    require_assets()
+    products = read_products(args.csv)
+
+    if args.list:
+        print(json.dumps(catalog(products), ensure_ascii=False, indent=1))
+        return 0
+
+    if args.item:
+        try:
+            products = select_products(products, args.item)
+        except SelectionError as exc:
+            print(exc, file=sys.stderr)
+            return 2
+
+    output_dir: Path = args.output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
     generated_paths: list[Path] = []
 
     for row in products:
-        output_name = build_output_filename(row)
-        output_path = OUTPUT_DIR / output_name
+        output_path = output_dir / build_output_filename(row, args.date)
         build_poster(row, output_path)
-        generated_files.append(output_path.name)
-        generated_paths.append(output_path)
+        if output_path not in generated_paths:
+            generated_paths.append(output_path)
 
-    combined_output_path = OUTPUT_DIR / build_combined_output_filename()
+    combined_output_path = output_dir / build_combined_output_filename(args.date)
     build_combined_pdf(generated_paths, combined_output_path)
-    generated_files.append(combined_output_path.name)
 
-    print(f"{len(generated_files)} arquivo(s) gerado(s) em {OUTPUT_DIR}")
-    for filename in generated_files:
-        print(f"- {filename}")
+    print(f"{len(generated_paths) + 1} arquivo(s) gerado(s) em {output_dir}")
+    for path in generated_paths:
+        print(f"- {path.name}")
+    print(f"Consolidado: {combined_output_path}")
     return 0
 
 
