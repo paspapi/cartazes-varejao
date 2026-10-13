@@ -540,6 +540,7 @@ def read_products(csv_path: Path) -> list[dict[str, str]]:
                 )
             try:
                 parsed_row = {
+                    "_index": index - 2,
                     "produto": product,
                     "produto_jp": product_jp,
                     "variedade": variedade,
@@ -996,6 +997,101 @@ def select_products(
     return selected
 
 
+def read_csv_raw(csv_path: Path) -> tuple[list[str], list[dict[str, str]]]:
+    with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        return list(reader.fieldnames or []), list(reader)
+
+
+def write_csv_raw(csv_path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> None:
+    tmp_path = csv_path.with_suffix(".tmp")
+    with tmp_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+    tmp_path.replace(csv_path)
+
+
+def csv_price(price: str) -> str:
+    # No CSV os precos inteiros ficam sem decimais ("8"); os demais com ponto ("12.50").
+    formatted = format_price(price).replace(",", ".")
+    return formatted[:-3] if formatted.endswith(".00") else formatted
+
+
+def save_prices(
+    csv_path: Path,
+    products: list[dict[str, object]],
+    selected: list[dict[str, object]],
+) -> list[str]:
+    fieldnames, raw_rows = read_csv_raw(csv_path)
+    changes = []
+    for row in selected:
+        group = match_key(f"{row['produto']} {row['variedade']}")
+        same = [p for p in products if match_key(f"{p['produto']} {p['variedade']}") == group]
+        new_price = format_price(str(row["preco"]))
+        if any(format_price(str(p["preco"])) == new_price for p in same):
+            continue
+        if len(same) > 1:
+            options = "\n".join(f"- linha {int(p['_index']) + 2}: {describe_row(p)}" for p in same)
+            raise SelectionError(
+                f"{describe_row(row)}: o produto tem mais de uma linha no CSV; "
+                f"nao sei qual atualizar. Edite o CSV:\n{options}"
+            )
+        raw = raw_rows[int(same[0]["_index"])]
+        changes.append(f"{describe_row(same[0])} -> {new_price}")
+        raw["preco"] = csv_price(str(row["preco"]))
+    if changes:
+        write_csv_raw(csv_path, fieldnames, raw_rows)
+    return changes
+
+
+def most_common(values: list[str]) -> str:
+    counts: dict[str, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    return max(counts, key=counts.get) if counts else ""
+
+
+def add_products(csv_path: Path, products: list[dict[str, object]], specs: list[str]) -> list[str]:
+    fieldnames, raw_rows = read_csv_raw(csv_path)
+    # Campos de estilo nao informados copiam o valor mais comum do CSV (tipo, origem, cores, fontes).
+    style_fields = [f for f in fieldnames if f not in {"商品名", "produto", "variedade", "preco"}]
+    defaults = {f: most_common([r.get(f) or "" for r in raw_rows]) for f in style_fields}
+    existing = {match_key(f"{p['produto']} {p['variedade']}") for p in products}
+    added_names = []
+    for spec in specs:
+        try:
+            data = json.loads(spec)
+        except json.JSONDecodeError as exc:
+            raise SelectionError(f"--add precisa ser JSON: {spec!r}") from exc
+        if not isinstance(data, dict):
+            raise SelectionError(f"--add precisa ser um objeto JSON: {spec!r}")
+        data = {("商品名" if k == "produto_jp" else k): str(v) for k, v in data.items()}
+        unknown = set(data) - set(fieldnames)
+        if unknown:
+            raise SelectionError(f"--add: campos desconhecidos {sorted(unknown)}. Campos: {fieldnames}")
+        produto = data.get("produto", "").strip().upper()
+        if not produto or not data.get("preco", "").strip():
+            raise SelectionError(f"--add precisa de produto e preco: {spec!r}")
+        variedade = data.get("variedade", "").strip().upper()
+        key = match_key(f"{produto} {variedade}")
+        if key in existing:
+            raise SelectionError(f"{produto} {variedade}".strip() + " ja existe no CSV. Use --item ... --save para mudar o preco.")
+        try:
+            preco = csv_price(data["preco"].replace(",", "."))
+        except ValueError as exc:
+            raise SelectionError(f"--add {produto}: {exc}") from exc
+        raw = {f: "" for f in fieldnames}
+        raw.update(defaults)
+        raw.update(data)
+        raw.update({"produto": produto, "variedade": variedade, "preco": preco})
+        raw_rows.append(raw)
+        existing.add(key)
+        added_names.append(f"{produto} {variedade}".strip())
+    write_csv_raw(csv_path, fieldnames, raw_rows)
+    return added_names
+
+
 def catalog(products: list[dict[str, object]]) -> list[dict[str, str]]:
     return [
         {
@@ -1089,6 +1185,22 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
             "PRECO substitui o preco do CSV, ex.: --item AVOCADO=12 --item 'ALFACE=6,50'"
         ),
     )
+    parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Grava no CSV os precos informados em --item (so quando o produto tem uma linha no CSV).",
+    )
+    parser.add_argument(
+        "--add",
+        action="append",
+        default=[],
+        metavar="JSON",
+        help=(
+            "Acrescenta um produto novo ao CSV e gera o cartaz (repetivel). "
+            'Ex.: --add \'{"produto": "ABACAXI", "produto_jp": "パイナップル", "preco": "12"}\'. '
+            "Campos omitidos (tipo, origem, cores, fontes) copiam o valor mais comum do CSV."
+        ),
+    )
     parser.add_argument("--list", action="store_true", help="Lista os produtos do CSV em JSON e sai.")
     parser.add_argument("--date", default=date.today().strftime("%Y%m%d"), help="Data no nome dos arquivos (AAAAMMDD). Padrao: hoje.")
     parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR, help="Pasta de saida. Padrao: output/")
@@ -1108,12 +1220,26 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(catalog(products), ensure_ascii=False, indent=1))
         return 0
 
-    if args.item:
+    if args.save and not args.item:
+        print("--save precisa de --item PRODUTO=PRECO", file=sys.stderr)
+        return 2
+
+    if args.item or args.add:
         try:
-            products = select_products(products, args.item)
+            selected = select_products(products, args.item)
+            if args.save:
+                for change in save_prices(args.csv, products, selected):
+                    print(f"Preco atualizado no CSV: {change}")
+            if args.add:
+                added = add_products(args.csv, products, args.add)
+                products = read_products(args.csv)
+                selected += select_products(products, added)
+                for name in added:
+                    print(f"Produto acrescentado ao CSV: {name}")
         except SelectionError as exc:
             print(exc, file=sys.stderr)
             return 2
+        products = selected
 
     output_dir: Path = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)

@@ -62,3 +62,52 @@ def test_generate_all_has_one_page_per_row(tmp_path, products):
     assert generate.main(["--output-dir", str(tmp_path), "--date", "20261013"]) == 0
     with fitz.open(tmp_path / "__PRODUTOS_TODOS_TODOS_20261013.pdf") as doc:
         assert doc.page_count == len(products)
+
+
+@pytest.fixture
+def csv_copy(tmp_path):
+    path = tmp_path / "produtos.csv"
+    path.write_bytes(generate.CSV_PATH.read_bytes())
+    return path
+
+
+def run(csv_copy, tmp_path, *args):
+    return generate.main(["--csv", str(csv_copy), "--output-dir", str(tmp_path / "out"), "--date", "20261013", *args])
+
+
+def test_save_updates_single_row_only(csv_copy, tmp_path):
+    original = csv_copy.read_text(encoding="utf-8")
+    assert run(csv_copy, tmp_path, "--item", "AVOCADO=13,50", "--item", "ALFACE=6", "--save") == 0
+    text = csv_copy.read_text(encoding="utf-8")
+    assert "アボカド,AVOCADO,,ORGÂNICO,PRODUÇÃO PRÓPRIA,13.50," in text
+    # ALFACE ja tinha 6 no CSV: nada muda nessas linhas
+    assert len(text.splitlines()) == len(original.splitlines())
+    assert [l for l in text.splitlines() if ",ALFACE," in l] == [l for l in original.splitlines() if ",ALFACE," in l]
+
+    assert run(csv_copy, tmp_path, "--item", "AVOCADO=14", "--save") == 0
+    assert "アボカド,AVOCADO,,ORGÂNICO,PRODUÇÃO PRÓPRIA,14," in csv_copy.read_text(encoding="utf-8")
+
+
+def test_save_refuses_ambiguous_rows(csv_copy, tmp_path):
+    before = csv_copy.read_bytes()
+    assert run(csv_copy, tmp_path, "--item", "ALFACE=7", "--save") == 2
+    assert csv_copy.read_bytes() == before
+
+
+def test_add_new_product_with_defaults(csv_copy, tmp_path):
+    rc = run(csv_copy, tmp_path, "--add", '{"produto": "abacaxi", "produto_jp": "パイナップル", "preco": "12,5"}')
+    assert rc == 0
+    last = csv_copy.read_text(encoding="utf-8").splitlines()[-1]
+    assert last == "パイナップル,ABACAXI,,ORGÂNICO,PRODUÇÃO PRÓPRIA,12.50,preto,,verde,verde,verde,,,,,SundayLatte-E4DBW.ttf"
+    assert (tmp_path / "out" / "abacaxi_org_12-50_20261013.pdf").exists()
+    products = generate.read_products(csv_copy)
+    assert len(generate.select_products(products, ["パイナップル"])) == 1
+
+
+def test_add_rejects_existing_and_bad_input(csv_copy, tmp_path):
+    before = csv_copy.read_bytes()
+    assert run(csv_copy, tmp_path, "--add", '{"produto": "AVOCADO", "preco": "12"}') == 2
+    assert run(csv_copy, tmp_path, "--add", '{"produto": "X"}') == 2
+    assert run(csv_copy, tmp_path, "--add", '{"produto": "X", "preco": "1", "foo": "y"}') == 2
+    assert run(csv_copy, tmp_path, "--add", "not json") == 2
+    assert csv_copy.read_bytes() == before

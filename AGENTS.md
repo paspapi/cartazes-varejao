@@ -10,7 +10,7 @@ Este projeto gera cartazes A4 em PDF a partir do template CEAGESP usando `script
 - `output/`: PDFs gerados
 - `run_generate.sh`: executa usando `.venv` (repassa os argumentos)
 - `tests/test_generate.py`: pytest (selecao de produtos e geracao)
-- `README.md`: instrucoes de uso e opcoes (`--item`, `--list`, `--date`)
+- `README.md`: instrucoes de uso e opcoes (`--item`, `--save`, `--add`, `--list`, `--date`)
 
 ## Ambiente
 
