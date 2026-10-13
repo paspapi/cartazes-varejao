@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Cartazes Varejao
+Comment=Gera os cartazes PDF usando o ambiente .venv do projeto
+Exec=/bin/bash -lc 'cd "/home/anando/projects/cartazes-varejao" && bash "/home/anando/projects/cartazes-varejao/run_generate.sh"'
+Path=/home/anando/projects/cartazes-varejao
+Terminal=true
+Categories=Office;
+StartupNotify=true
